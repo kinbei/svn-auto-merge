@@ -151,11 +151,18 @@ local function output_conflicts(output, workdir, author, svn_path, revision, tbl
 	end
 end
 
-local svn_url = select(1, ...)
-local svn_relative_to_root_path = select(2, ...)
-local begin_revision = tonumber(select(3, ...), 10)
-local workdir = select(4, ...)
-local report_file = select(5, ...)
+--
+local config_file = select(1, ...)
+local begin_revision = tonumber(select(2, ...))
+local config = require(config_file)
+if not config then
+	error(string.format("Failed to require %s", config_file))
+end
+
+local svn_url = config.svn_url
+local svn_relative_to_root_path = config.svn_relative_to_root_path
+local workdir = config.workdir
+local report_file = config.report_file
 local svn_path = string.format("%s%s", svn_url, svn_relative_to_root_path)
 
 revert_dir(workdir)
@@ -164,9 +171,8 @@ local success, msg = get_log(svn_path, begin_revision)
 if success then
 	local tbl_log = msg
 	for _, v in ipairs(tbl_log) do
+		--
 		print(string.format("merge revision = [%s], author = [%s]", v.revision, v.author))
-
-		print(string.format("%s %s", type(v.revision), type(begin_revision)))
 		if v.revision <= begin_revision then
 			goto continue
 		end
