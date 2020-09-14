@@ -99,6 +99,7 @@ local function merge(svn_relative_to_root_path, revision, workdir)
 		return false, string.format("error|merge|invalid first line of response|%s", tbl_merge_response[1])
 	end
 
+	-- 返回信息的版本不一致
 	if merge_revision ~= revision then
 		return false, string.format("error|merge|merge_revision not match|%s|%s", merge_revision, revision)
 	end
@@ -143,15 +144,6 @@ local function merge(svn_relative_to_root_path, revision, workdir)
 end
 
 --
-local function output_conflicts(output, workdir, author, svn_path, revision, tbl_conflicts)
-	for _, conflicts_file in ipairs(tbl_conflicts) do
-		-- 排除工作目录, 得到相对于 svn url 的相对路径
-		local svn_file = svn_path .. conflicts_file:match(string.format("^%s(.*)$", workdir))
-		output:write(string.format("%s|%s|%s\n", author, revision, svn_file))
-	end
-end
-
---
 local config_file = select(1, ...)
 local begin_revision = tonumber(select(2, ...))
 local config = require(config_file)
@@ -164,6 +156,18 @@ local svn_relative_to_root_path = config.svn_relative_to_root_path
 local workdir = config.workdir
 local report_file = config.report_file
 local svn_path = string.format("%s%s", svn_url, svn_relative_to_root_path)
+local tbl_final_report = {} --[[
+	= {
+		[author] = {
+			[revition] = {
+					relative_to_root_path,
+					...
+			},
+			...
+		},
+		...
+	}
+]] 
 
 revert_dir(workdir)
 update_dir(workdir)
@@ -184,16 +188,36 @@ if success then
 		else
 			local tbl_conflicts = msg
 			if #tbl_conflicts > 0 then
-				local f = io.open(report_file, "a")
-				if not f then
-					output_conflicts(io.output(), workdir, v.author, svn_path, v.revision, tbl_conflicts)
-				else
-					output_conflicts(f, workdir, v.author, svn_path, v.revision, tbl_conflicts)
+				local f = io.open(report_file, "a") or io.output()
+
+				for _, conflicts_file in ipairs(tbl_conflicts) do
+					tbl_final_report[v.author] = tbl_final_report[v.author] or {}
+					tbl_final_report[v.author][v.revision] = tbl_final_report[v.author][v.revision] or {}
+
+					local relative_to_root_path = conflicts_file:match(string.format("^%s(.*)$", workdir))
+					table.insert(tbl_final_report[v.author][v.revision], relative_to_root_path)
+
+					f:write(string.format("%s|%s|%s\n", v.author, v.revision, relative_to_root_path))
 				end
+
+				f:close()
 			end
 		end
 		::continue::
 	end
+
+	-- 输出最终报告
+	local f = io.output()
+	for author, v1 in pairs(tbl_final_report) do
+		f:write(string.format("%s\n", author))
+		for revision, tbl_relative_to_root_path in pairs(v1) do
+			f:write(string.format("\t merge %s %s\n", svn_relative_to_root_path, revision))
+			for _, relative_to_root_path in ipairs(tbl_relative_to_root_path) do
+				f:write(string.format("\t\t%s\n", relative_to_root_path))
+			end
+		end
+	end
+	f:close()
 else
 	error(msg)
 end
