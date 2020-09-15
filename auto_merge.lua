@@ -31,12 +31,6 @@ local function string_split(str, sep, func)
 	return fields
 end
 
-local function print_response(t)
-	print("--------------- print_response -- begin")
-	print(table.concat(t, "\n"))
-	print("--------------- print_response -- end")
-end
-
 -- 从指定 url 获取 svn log, 并以 {revision = xx, author = xx} 格式的序列返回
 local function get_log(svn_path, begin_revision)
 	local t = {}
@@ -143,10 +137,29 @@ local function merge(svn_relative_to_root_path, revision, workdir)
 	return true, tbl_conflicts
 end
 
+local function write_file(file_name, mode, fmt, ...)
+	local f = assert(io.open(file_name, mode), string.format("write_file|file_name(%s)", file_name))
+	local success, msg = f:write(string.format(fmt, ...))
+	if not success then
+		error(msg)
+	end
+	f:close()
+end
+
+local function read_file(file_name)
+	local f = assert(io.open(file_name, "r"), string.format("write_file|file_name(%s)", file_name))
+	local s = f:read("a")
+	if not s then
+		error(string.format("read_file|file_name(%s)", file_name))
+	end
+	f:close()
+	return s
+end
+
 --
 local config_file = select(1, ...)
-local begin_revision = tonumber(select(2, ...))
 local config = require(config_file)
+local begin_revision = tonumber(select(2, ...) or "")
 if not config then
 	error(string.format("Failed to require %s", config_file))
 end
@@ -155,8 +168,19 @@ local svn_url = config.svn_url
 local svn_relative_to_root_path = config.svn_relative_to_root_path
 local workdir = config.workdir
 local report_file = config.report_file
+local last_merged_revision_store = config.last_merged_revision_store
 local tbl_exclude_author = config.exclude_author
 local svn_path = string.format("%s%s", svn_url, svn_relative_to_root_path)
+
+-- 没有指定开始版本时, 则尝试读取 last_merged_revision_store 获取 
+if not begin_revision then
+	begin_revision = tonumber(read_file(last_merged_revision_store))
+	assert(begin_revision, string.format("begin_revision = %s", begin_revision))
+
+	-- svn 版本号全局唯一, + 1 表示获取下个未合并的版本号
+	begin_revision = begin_revision + 1
+end
+
 local tbl_final_report = {} --[[
 	= {
 		[author] = {
@@ -188,7 +212,7 @@ if success then
 	for _, v in ipairs(tbl_log) do
 		--
 		print(string.format("merge revision = [%s], author = [%s]", v.revision, v.author))
-		if v.revision <= begin_revision then
+		if v.revision < begin_revision then
 			goto continue
 		end
 
@@ -219,7 +243,9 @@ if success then
 				f:close()
 			end
 		end
+
 		::continue::
+		write_file(last_merged_revision_store, "w", "%s", v.revision)
 	end
 
 	-- 输出最终报告
