@@ -155,6 +155,7 @@ local svn_url = config.svn_url
 local svn_relative_to_root_path = config.svn_relative_to_root_path
 local workdir = config.workdir
 local report_file = config.report_file
+local tbl_exclude_author = config.exclude_author
 local svn_path = string.format("%s%s", svn_url, svn_relative_to_root_path)
 local tbl_final_report = {} --[[
 	= {
@@ -169,6 +170,16 @@ local tbl_final_report = {} --[[
 	}
 ]] 
 
+local function check_exclude_author(author)
+	for _, v in ipairs(tbl_exclude_author) do
+		if author == v then
+			return true
+		end
+	end
+
+	return false
+end
+
 revert_dir(workdir)
 update_dir(workdir)
 local success, msg = get_log(svn_path, begin_revision)
@@ -178,6 +189,11 @@ if success then
 		--
 		print(string.format("merge revision = [%s], author = [%s]", v.revision, v.author))
 		if v.revision <= begin_revision then
+			goto continue
+		end
+
+		if check_exclude_author(v.author) then
+			print(string.format("Skip|exclude_author(%s)|revision(%s)", v.author, v.revision))
 			goto continue
 		end
 
