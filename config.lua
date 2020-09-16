@@ -1,4 +1,5 @@
 local config = {
+	svn_cmd = 'svn --username \"xxx\" --password \"xxx\" --no-auth-cache',
 	svn_url = "", -- svn url 地址
 	svn_relative_to_root_path = "", -- 分支目录(相对于 svn url 的路径)
 	workdir = "", -- 本地 svn 目录

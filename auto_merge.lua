@@ -1,5 +1,5 @@
-local function execute_command(command, ...)
-	local handle = io.popen(string.format(command, ...), "r")
+local function execute_command(fmt, ...)
+	local handle = io.popen(string.format(fmt, ...), "r")
 	local t = {}
 	for line in handle:lines() do
 		table.insert(t, line)
@@ -7,12 +7,16 @@ local function execute_command(command, ...)
 	local tbl_rc = {handle:close()}
 
 	if tbl_rc[1] ~= true then
-		print("execute_command|%s", string.format(command, ...))
 		for k, v in pairs(tbl_rc) do
-			print("k(%s) v(%s)", k, v)
+			print(string.format("k(%s) v(%s)", k, v))
 		end
+		error(string.format("execute_command|[%s]", string.format(fmt, ...)))
 	end
 	return t, tbl_rc
+end
+
+local function svn_command(fmt, ...)
+	return execute_command(string.format(_ENV.SVN_CMD .. " " .. fmt, ...))
 end
 
 local function string_split(str, sep, func)
@@ -34,7 +38,7 @@ end
 -- 从指定 url 获取 svn log, 并以 {revision = xx, author = xx} 格式的序列返回
 local function get_log(svn_path, begin_revision)
 	local t = {}
-	for _, v in ipairs(execute_command("svn log %s -r%s:HEAD -q", svn_path, begin_revision)) do
+	for _, v in ipairs(svn_command("log %s -r%s:HEAD -q", svn_path, begin_revision)) do
 		-- 去除 svn log 分割线
 		if v == "------------------------------------------------------------------------" then
 			goto continue
@@ -62,12 +66,12 @@ end
 
 --
 local function revert_dir(workdir)
-	execute_command("svn revert --depth infinity %s", workdir)
+	svn_command("revert --depth infinity %s", workdir)
 end
 
 --
 local function update_dir(workdir)
-	execute_command("svn update %s", workdir)
+	svn_command("update %s", workdir)
 end
 
 local tbl_merged_item_op = {}
@@ -81,7 +85,7 @@ local function merge(svn_relative_to_root_path, revision, workdir)
 	-- 每次 merge 前都执行 update, 防止出现 svn: E195020: Cannot merge into mixed-revision working copy [xxx:xxx]; try updating first
 	update_dir(workdir)
 
-	local tbl_merge_response = execute_command("svn merge ^%s -c%s %s --accept 'postpone'", svn_relative_to_root_path, revision, workdir)
+	local tbl_merge_response = svn_command("merge ^%s -c%s %s --accept 'postpone'", svn_relative_to_root_path, revision, workdir)
 	if #tbl_merge_response <= 0 then
 		-- svn merge 没有任何返回, 通常是已经合并过代码
 		return true, {}
@@ -119,7 +123,7 @@ local function merge(svn_relative_to_root_path, revision, workdir)
 		-- 记录冲突文件并还原
 		if op == 'C' then
 			table.insert(tbl_conflicts, file)
-			execute_command("svn revert %s@", file) -- 当文件路径中包含 @ 字符时, 需要在未尾也加上 @
+			svn_command("revert %s@", file) -- 当文件路径中包含 @ 字符时, 需要在未尾也加上 @
 			print(string.format("revert %s", file))
 		else
 			table.insert(tbl_normal, file)
@@ -129,7 +133,7 @@ local function merge(svn_relative_to_root_path, revision, workdir)
 	end
 
 	if #tbl_normal > 0 then
-		local r = execute_command("svn commit -m\"merge from %s %s\" %s", svn_relative_to_root_path, revision, workdir)
+		local r = svn_command("commit -m\"merge from %s %s\" %s", svn_relative_to_root_path, revision, workdir)
 		for _, v in ipairs(r) do
 			print(string.format("commit %s", v))
 		end
@@ -171,6 +175,7 @@ local report_file = config.report_file
 local last_merged_revision_store = config.last_merged_revision_store
 local tbl_exclude_author = config.exclude_author
 local svn_path = string.format("%s%s", svn_url, svn_relative_to_root_path)
+_ENV.SVN_CMD = config.svn_cmd
 
 -- 没有指定开始版本时, 则尝试读取 last_merged_revision_store 获取 
 if not begin_revision then
