@@ -44,35 +44,6 @@ local function string_split(str, sep, func)
 	return tbl_fields
 end
 
--- 从指定 url 获取 svn log, 并以 {revision = xx, author = xx} 格式的序列返回
-local function get_log_bak(svn_path, begin_revision)
-	local t = {}
-	for _, v in ipairs(svn_command("log %s -r%s:HEAD -q", svn_path, begin_revision)) do
-		-- 去除 svn log 分割线
-		if v == "------------------------------------------------------------------------" then
-			goto continue
-		end
-		
-		local tbl_field = string_split(v, "|")
-		if #tbl_field ~= 3 then
-			return false, string.format("invalid log: %s", v)
-		end
-
-		-- revision(rxxx )
-		local revision = tonumber(tbl_field[1]:match("r([0-9]*) "))
-		-- author( xxx )
-		local author = tbl_field[2]:match(" (%g*) ")
-		if not revision or not author then
-			return false, string.format("invalid revision or author: %s", v)
-		end
-
-		t[#t + 1] = {revision = revision, author = author}
-		::continue::
-	end
-
-	return true, t
-end
-
 local function get_log(svn_path, begin_revision)
 	local xml_parser = xml2lua.parser(xmlhandler)
 	xml_parser:parse( table.concat(svn_command("log %s -r%s:HEAD --xml", svn_path, begin_revision), "\n") )
@@ -202,7 +173,7 @@ local svn_relative_to_root_path = config.svn_relative_to_root_path
 local workdir = config.workdir
 local report_file = config.report_file
 local last_merged_revision_store = config.last_merged_revision_store
-local tbl_exclude_author = config.exclude_author
+local tbl_execlude_rule = config.execlude_rule
 local svn_path = string.format("%s%s", svn_url, svn_relative_to_root_path)
 local last_merged_revision = tonumber(read_file(last_merged_revision_store, false))
 _ENV.SVN_CMD = config.svn_cmd
@@ -222,11 +193,31 @@ local tbl_final_report = {} --[[
 	}
 ]] 
 
-local function check_exclude_author(author)
-	for _, v in ipairs(tbl_exclude_author) do
-		if author == v then
+local function check_exclude(svn_log_info)
+	
+	for _, execlude_rule in ipairs(tbl_execlude_rule) do
+		for k, _ in pairs(execlude_rule) do
+			-- 配置了其它项, 跳过不处理
+			if not svn_log_info[k] then
+				goto continue_1
+			end
+
+			-- 排除规则不匹配
+			if svn_log_info[k] ~= execlude_rule[k] then
+				goto continue_2
+			end
+
+			::continue_1::
+		end
+
+		-- 排除规则完全匹配
+		-- print(string.format("\tMatch exclude rule|revision(%s)|author(%s)|msg(%s)", execlude_rule.revision, execlude_rule.author, execlude_rule.msg))
+		print(string.format("\tSkip|revision(%s)|author(%s)|msg(%s)", svn_log_info.revision, svn_log_info.author, svn_log_info.msg))
+		
+		if true then
 			return true
 		end
+		::continue_2::
 	end
 
 	return false
@@ -264,8 +255,7 @@ if success then
 		--
 		print(string.format("merge revision = [%s], author = [%s]", v.revision, v.author))
 
-		if check_exclude_author(v.author) then
-			print(string.format("Skip|exclude_author(%s)|revision(%s)", v.author, v.revision))
+		if check_exclude(v) then
 			goto continue
 		end
 
