@@ -1,3 +1,7 @@
+package.path = "./xml2lua/?.lua;" .. package.path
+local xml2lua = require("xml2lua")
+local xmlhandler = require("xmlhandler.tree")
+
 local function execute_command(fmt, ...)
 	local handle = io.popen(string.format(fmt, ...), "r")
 	local t = {}
@@ -41,7 +45,7 @@ local function string_split(str, sep, func)
 end
 
 -- 从指定 url 获取 svn log, 并以 {revision = xx, author = xx} 格式的序列返回
-local function get_log(svn_path, begin_revision)
+local function get_log_bak(svn_path, begin_revision)
 	local t = {}
 	for _, v in ipairs(svn_command("log %s -r%s:HEAD -q", svn_path, begin_revision)) do
 		-- 去除 svn log 分割线
@@ -64,6 +68,18 @@ local function get_log(svn_path, begin_revision)
 
 		t[#t + 1] = {revision = revision, author = author}
 		::continue::
+	end
+
+	return true, t
+end
+
+local function get_log(svn_path, begin_revision)
+	local xml_parser = xml2lua.parser(xmlhandler)
+	xml_parser:parse( table.concat(svn_command("log %s -r%s:HEAD --xml", svn_path, begin_revision), "\n") )
+
+	local t = {}
+	for k, v in ipairs(xmlhandler.root.log.logentry) do
+		t[#t + 1] = {revision = tonumber(v._attr.revision), author = v.author, msg = v.msg, date = v.date}
 	end
 
 	return true, t
