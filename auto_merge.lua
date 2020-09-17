@@ -1,16 +1,21 @@
 local function execute_command(fmt, ...)
 	local handle = io.popen(string.format(fmt, ...), "r")
 	local t = {}
-	for line in handle:lines() do
-		table.insert(t, line)
- 	end
-	local tbl_rc = {handle:close()}
 
+	for line in handle:lines() do
+		t[#t + 1] = line
+ 	end
+
+	local tbl_rc = {handle:close()}
 	if tbl_rc[1] ~= true then
+		print(string.format("Error|execute_command|[%s]", string.format(fmt, ...)))
+		for _, v in ipairs(t) do
+			print(string.format("%s", v))
+		end
 		for k, v in pairs(tbl_rc) do
 			print(string.format("k(%s) v(%s)", k, v))
 		end
-		error(string.format("execute_command|[%s]", string.format(fmt, ...)))
+		assert(false)
 	end
 	return t, tbl_rc
 end
@@ -20,19 +25,19 @@ local function svn_command(fmt, ...)
 end
 
 local function string_split(str, sep, func)
-	local sep, fields = sep or ":", {}
+	local tbl_fields = {}
 	local pattern = string.format("([^%s]+)", sep)
 
 	if func then
 		string.gsub(str, pattern, function(c)
-			fields[#fields+1] = func(c) 
+			tbl_fields[#tbl_fields + 1] = func(c) 
 		end)
 	else
 		string.gsub(str, pattern, function(c)
-			fields[#fields+1] = c 
+			tbl_fields[#tbl_fields + 1] = c 
 		end)
 	end
-	return fields
+	return tbl_fields
 end
 
 -- 从指定 url 获取 svn log, 并以 {revision = xx, author = xx} 格式的序列返回
@@ -57,7 +62,7 @@ local function get_log(svn_path, begin_revision)
 			return false, string.format("invalid revision or author: %s", v)
 		end
 
-		table.insert(t, {revision = revision, author = author})
+		t[#t + 1] = {revision = revision, author = author}
 		::continue::
 	end
 
@@ -115,28 +120,25 @@ local function merge(svn_relative_to_root_path, revision, workdir)
 		end
 
 		local op, file = tbl_merge_response[i]:match("^ *(%a) *(%/.*)$")
-		print(op, file)
+		print(string.format("\t%s\t%s", op, file)) -- 打印每个合并操作
 		if not tbl_merged_item_op[op] then
 			return false, string.format("error|merge|invalid merged item|%s|%s", tbl_merge_response[i], op)
 		end
 
 		-- 记录冲突文件并还原
 		if op == 'C' then
-			table.insert(tbl_conflicts, file)
+			tbl_conflicts[#tbl_conflicts + 1] = file
 			svn_command("revert %s@", file) -- 当文件路径中包含 @ 字符时, 需要在未尾也加上 @
-			print(string.format("revert %s", file))
+			print(string.format("\trevert %s", file)) -- 打印回滚的路径
 		else
-			table.insert(tbl_normal, file)
+			tbl_normal[#tbl_normal + 1] = file
 		end
 
 		::continue::
 	end
 
 	if #tbl_normal > 0 then
-		local r = svn_command("commit -m\"merge from %s %s\" %s", svn_relative_to_root_path, revision, workdir)
-		for _, v in ipairs(r) do
-			print(string.format("commit %s", v))
-		end
+		svn_command("commit -m\"merge from %s %s\" %s", svn_relative_to_root_path, revision, workdir)
 	end
 	return true, tbl_conflicts
 end
@@ -150,8 +152,19 @@ local function write_file(file_name, mode, fmt, ...)
 	f:close()
 end
 
-local function read_file(file_name)
-	local f = assert(io.open(file_name, "r"), string.format("write_file|file_name(%s)", file_name))
+local function read_file(file_name, check_file_exist)
+	if check_file_exist == nil then
+		check_file_exist = true
+	end
+
+	local f = io.open(file_name, "r")
+	if not f then
+		if check_file_exist then
+			error(string.format("write_file|file_name(%s)", file_name))
+		else
+			return ""
+		end
+	end
 	local s = f:read("a")
 	if not s then
 		error(string.format("read_file|file_name(%s)", file_name))
@@ -175,16 +188,10 @@ local report_file = config.report_file
 local last_merged_revision_store = config.last_merged_revision_store
 local tbl_exclude_author = config.exclude_author
 local svn_path = string.format("%s%s", svn_url, svn_relative_to_root_path)
+local last_merged_revision = tonumber(read_file(last_merged_revision_store, false))
 _ENV.SVN_CMD = config.svn_cmd
 
--- 没有指定开始版本时, 则尝试读取 last_merged_revision_store 获取 
-if not begin_revision then
-	begin_revision = tonumber(read_file(last_merged_revision_store))
-	assert(begin_revision, string.format("begin_revision = %s", begin_revision))
-
-	-- svn 版本号全局唯一, + 1 表示获取下个未合并的版本号
-	begin_revision = begin_revision + 1
-end
+assert(begin_revision or last_merged_revision, string.format("begin_revision(%s)|last_merged_revision(%s)|you must specify the revision", begin_revision, last_merged_revision))
 
 local tbl_final_report = {} --[[
 	= {
@@ -209,17 +216,37 @@ local function check_exclude_author(author)
 	return false
 end
 
+local function get_local_svn_relative_to_root_path(local_path, svn_url)
+	local tbl_response = svn_command("info %s", local_path)
+	for k, v in pairs(tbl_response) do
+		-- URL: http://xxx.xxx
+		local svn_relative_to_root_path = v:match(string.format("^URL: %s(.*)$", svn_url))
+		if svn_relative_to_root_path then
+			return svn_relative_to_root_path
+		end
+	end
+
+	return nil
+end
+
 revert_dir(workdir)
 update_dir(workdir)
-local success, msg = get_log(svn_path, begin_revision)
+local success, msg = get_log(svn_path, begin_revision or last_merged_revision)
 if success then
 	local tbl_log = msg
 	for _, v in ipairs(tbl_log) do
+		if begin_revision then
+			if v.revision < begin_revision then
+				goto continue
+			end
+		else
+			if v.revision <= last_merged_revision then
+				goto continue
+			end
+		end
+
 		--
 		print(string.format("merge revision = [%s], author = [%s]", v.revision, v.author))
-		if v.revision < begin_revision then
-			goto continue
-		end
 
 		if check_exclude_author(v.author) then
 			print(string.format("Skip|exclude_author(%s)|revision(%s)", v.author, v.revision))
@@ -239,8 +266,9 @@ if success then
 					tbl_final_report[v.author] = tbl_final_report[v.author] or {}
 					tbl_final_report[v.author][v.revision] = tbl_final_report[v.author][v.revision] or {}
 
+					-- 获取相对于 svn 分支目录的相对路径
 					local relative_to_root_path = conflicts_file:match(string.format("^%s(.*)$", workdir))
-					table.insert(tbl_final_report[v.author][v.revision], relative_to_root_path)
+					tbl_final_report[v.author][v.revision][#tbl_final_report[v.author][v.revision] + 1] = relative_to_root_path
 
 					f:write(string.format("%s|%s|%s\n", v.author, v.revision, relative_to_root_path))
 				end
@@ -254,11 +282,18 @@ if success then
 	end
 
 	-- 输出最终报告
+	local target = get_local_svn_relative_to_root_path(workdir, svn_url)
 	local f = io.output()
+
+	if next(tbl_final_report) then
+		f:write("------------------------------------------------------------------------\n")
+		f:write("Summary of conflicts:\n")
+	end
+
 	for author, v1 in pairs(tbl_final_report) do
 		f:write(string.format("%s\n", author))
 		for revision, tbl_relative_to_root_path in pairs(v1) do
-			f:write(string.format("\t merge %s %s\n", svn_relative_to_root_path, revision))
+			f:write(string.format("\t merge %s %s to %s\n", svn_relative_to_root_path, revision, target))
 			for _, relative_to_root_path in ipairs(tbl_relative_to_root_path) do
 				f:write(string.format("\t\t%s\n", relative_to_root_path))
 			end
