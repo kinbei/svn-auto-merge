@@ -278,7 +278,7 @@ if success then
 					tbl_final_report[v.author][v.revision] = tbl_final_report[v.author][v.revision] or {}
 
 					-- 获取相对于 svn 分支目录的相对路径
-					local relative_to_root_path = conflicts_file:match(string.format("^%s(.*)$", workdir))
+					local relative_to_root_path = conflicts_file:match(string.format("^%s(.*)", workdir:gsub("%p","%%%0")))
 					tbl_final_report[v.author][v.revision][#tbl_final_report[v.author][v.revision] + 1] = relative_to_root_path
 
 					f:write(string.format("%s|%s|%s\n", v.author, v.revision, relative_to_root_path))
