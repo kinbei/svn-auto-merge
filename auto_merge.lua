@@ -47,9 +47,14 @@ end
 local function get_log(svn_path, begin_revision)
 	local xml_parser = xml2lua.parser(xmlhandler)
 	xml_parser:parse( table.concat(svn_command("log %s -r%s:HEAD --xml", svn_path, begin_revision), "\n") )
+	
+	local tbl_log = xmlhandler.root.log.logentry
+	if #tbl_log <= 0 then
+		tbl_log = {tbl_log}
+	end
 
 	local t = {}
-	for k, v in ipairs(xmlhandler.root.log.logentry) do
+	for k, v in ipairs(tbl_log) do
 		t[#t + 1] = {revision = tonumber(v._attr.revision), author = v.author, msg = v.msg, date = v.date}
 	end
 
