@@ -1,17 +1,18 @@
 LUA_MYCFLAGS := ""
-LUA_PACKAGE_PATH := "package.path = package.path .. \";testcase/?.lua;\";"
 ROOT_DIR := $(shell pwd)
+LUA_VER := "5.4.0"
 
 lua : 
-	wget https://www.lua.org/ftp/lua-5.4.0.tar.gz && \
-	tar -xvf lua-5.4.0.tar.gz && \
-	cd ./lua-5.4.0/src/ && \
+	wget https://www.lua.org/ftp/lua-$(LUA_VER).tar.gz && \
+	tar -xvf lua-$(LUA_VER).tar.gz && \
+	cd ./lua-$(LUA_VER)/src/ && \
 	make linux MYCFLAGS=$(LUA_MYCFLAGS) && \
 	cd $(ROOT_DIR) && \
-	ln -s ./lua-5.4.0/src/lua lua
+	ln -s ./lua-$(LUA_VER)/src/lua lua
 
 all : \
 	lua
 
 clean:
-	cd lua-src/lua-5.3.4/src/ && make clean
+	cd $(ROOT_DIR) && \
+	rm -rf lua*
