@@ -1,14 +1,18 @@
 local config = {
 	svn_cmd = 'svn --username \"xxx\" --password \"xxx\" --no-auth-cache',
-	svn_url = "", -- svn url µØÖ·
-	svn_relative_to_root_path = "", -- ·ÖÖ§Ä¿Â¼(Ïà¶ÔÓÚ svn url µÄÂ·¾¶)
-	workdir = "", -- ±¾µØ svn Ä¿Â¼
-	report_file = "", -- ³åÍ»±¨¸æÈÕÖ¾
+	svn_url = "", -- svn url åœ°å€
+	svn_relative_to_root_path = "", -- åˆ†æ”¯ç›®å½•(ç›¸å¯¹äº svn url çš„è·¯å¾„)
+	workdir = "", -- æœ¬åœ° svn ç›®å½•
+	report_file = "", -- å†²çªæŠ¥å‘Šæ—¥å¿—
 	execlude_rule = {
-		{author = "xxx", msg = "xxx", revision = xxx},
+		{author = "xxx", msg = "xxx", revision = xxx}, -- æ ¹æ® author/msg/revision ä¸­çš„ä¸€ä¸ªæˆ–å¤šä¸ªæ’é™¤ä¸éœ€è¦åˆå¹¶çš„ç‰ˆæœ¬
 		{author = "xxx"},
 		...
 	},
-	last_merged_revision_store = "/path_to_last_merged_revision", -- ³ÌĞòÓÃÓÚ±£´æ×îºóÒÑ¾­ºÏ²¢¹ıµÄ°æ±¾ºÅ
+	execlude_path = {
+		"xxxx", -- æ ¹æ®è·¯å¾„æ’é™¤ä¸éœ€è¦åˆå¹¶çš„æ–‡ä»¶
+		...
+	},
+	last_merged_revision_store = "/path_to_last_merged_revision", -- ç¨‹åºç”¨äºä¿å­˜æœ€åå·²ç»åˆå¹¶è¿‡çš„ç‰ˆæœ¬å·
 }
 return config

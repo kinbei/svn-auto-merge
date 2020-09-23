@@ -78,7 +78,7 @@ tbl_merged_item_op['C'] = true
 tbl_merged_item_op['U'] = true
 
 --
-local function merge(svn_relative_to_root_path, revision, workdir)
+local function merge(svn_relative_to_root_path, revision, workdir, tbl_execlude_path)
 	-- 每次 merge 前都执行 update, 防止出现 svn: E195020: Cannot merge into mixed-revision working copy [xxx:xxx]; try updating first
 	update_dir(workdir)
 
@@ -112,10 +112,24 @@ local function merge(svn_relative_to_root_path, revision, workdir)
 		end
 
 		local op, file = tbl_merge_response[i]:match("^ *(%a) *(%/.*)$")
-		print(string.format("\t%s\t%s", op, file)) -- 打印每个合并操作
 		if not tbl_merged_item_op[op] then
 			return false, string.format("error|merge|invalid merged item|%s|%s", tbl_merge_response[i], op)
 		end
+
+		-- 检查排除的路径
+		for _, execlude_path in ipairs(tbl_execlude_path) do
+			-- 获取相对于 svn 分支目录的相对路径
+			local relative_to_root_path = file:match(string.format("^%s(.*)", workdir:gsub("%p","%%%0")))
+
+			if relative_to_root_path:match(execlude_path) then
+				print(string.format("\tSkip|file(%s)", relative_to_root_path))
+				svn_command("revert %s@", file) -- 当文件路径中包含 @ 字符时, 需要在未尾也加上 @
+				goto continue
+			end
+		end
+
+		-- 打印合并操作
+		print(string.format("\t%s\t%s", op, file))
 
 		-- 记录冲突文件并还原
 		if op == 'C' then
@@ -179,6 +193,7 @@ local workdir = config.workdir
 local report_file = config.report_file
 local last_merged_revision_store = config.last_merged_revision_store
 local tbl_execlude_rule = config.execlude_rule
+local tbl_execlude_path = config.execlude_path
 local svn_path = string.format("%s%s", svn_url, svn_relative_to_root_path)
 local last_merged_revision = tonumber(read_file(last_merged_revision_store, false))
 _ENV.SVN_CMD = config.svn_cmd
@@ -199,7 +214,6 @@ local tbl_final_report = {} --[[
 ]] 
 
 local function check_exclude(svn_log_info)
-	
 	for _, execlude_rule in ipairs(tbl_execlude_rule) do
 		for k, _ in pairs(execlude_rule) do
 			-- 配置了其它项, 跳过不处理
@@ -265,7 +279,7 @@ if success then
 		end
 
 		--
-		success, msg = merge(svn_relative_to_root_path, v.revision, workdir)
+		success, msg = merge(svn_relative_to_root_path, v.revision, workdir, tbl_execlude_path)
 		if not success then
 			error(msg)
 		else
