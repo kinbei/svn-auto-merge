@@ -221,108 +221,111 @@ local function get_local_svn_relative_to_root_path(local_path, svn_url)
 	return nil
 end
 
+local function auto_merge(config_file, begin_revision)
+	local config = require(config_file)
+	assert(type(config) == "table", "Invalid config")
+	local svn_url = config.svn_url
+	local svn_relative_to_root_path = config.svn_relative_to_root_path
+	local workdir = config.workdir
+	local report_file = config.report_file
+	local last_merged_revision_store = config.last_merged_revision_store
+	local tbl_execlude_rule = config.execlude_rule
+	local tbl_execlude_path = config.execlude_path
+	local svn_path = string.format("%s%s", svn_url, svn_relative_to_root_path)
+	local last_merged_revision = tonumber(read_file(last_merged_revision_store, false))
+	assert(begin_revision or last_merged_revision, string.format("begin_revision(%s)|last_merged_revision(%s)|you must specify the revision", begin_revision, last_merged_revision))
+
+	_ENV.SVN_CMD = config.svn_cmd
+
+	local tbl_final_report = {} --[[
+		= {
+			[author] = {
+				[revition] = {
+						relative_to_root_path,
+						...
+				},
+				...
+			},
+			...
+		}
+	]] 
+
+	revert_dir(workdir)
+	update_dir(workdir)
+	local success, msg = get_log(svn_path, begin_revision or last_merged_revision)
+	if success then
+		local tbl_log = msg
+		for _, v in ipairs(tbl_log) do
+			if begin_revision then
+				if v.revision < begin_revision then
+					goto continue
+				end
+			else
+				if v.revision <= last_merged_revision then
+					goto continue
+				end
+			end
+
+			--
+			print(string.format("merge revision = [%s], author = [%s]", v.revision, v.author))
+
+			if check_exclude(v, tbl_execlude_rule) then
+				goto continue
+			end
+
+			--
+			success, msg = merge(svn_relative_to_root_path, v.revision, workdir, tbl_execlude_path)
+			if not success then
+				error(msg)
+			else
+				local tbl_conflicts = msg
+				if #tbl_conflicts > 0 then
+					local f = io.open(report_file, "a") or io.output()
+
+					for _, conflicts_file in ipairs(tbl_conflicts) do
+						tbl_final_report[v.author] = tbl_final_report[v.author] or {}
+						tbl_final_report[v.author][v.revision] = tbl_final_report[v.author][v.revision] or {}
+
+						-- 获取相对于 svn 分支目录的相对路径
+						local relative_to_root_path = conflicts_file:match(string.format("^%s(.*)", workdir:gsub("%p","%%%0")))
+						tbl_final_report[v.author][v.revision][#tbl_final_report[v.author][v.revision] + 1] = relative_to_root_path
+
+						f:write(string.format("%s|%s|%s\n", v.author, v.revision, relative_to_root_path))
+					end
+
+					f:close()
+				end
+			end
+
+			::continue::
+			write_file(last_merged_revision_store, "w", "%s", v.revision)
+		end
+
+		-- 输出最终报告
+		local target = get_local_svn_relative_to_root_path(workdir, svn_url)
+		local f = io.output()
+
+		if next(tbl_final_report) then
+			f:write("------------------------------------------------------------------------\n")
+			f:write("Summary of conflicts:\n")
+		end
+
+		for author, v1 in pairs(tbl_final_report) do
+			f:write(string.format("%s\n", author))
+			for revision, tbl_relative_to_root_path in pairs(v1) do
+				f:write(string.format("\t merge %s %s to %s\n", svn_relative_to_root_path, revision, target))
+				for _, relative_to_root_path in ipairs(tbl_relative_to_root_path) do
+					f:write(string.format("\t\t%s\n", relative_to_root_path))
+				end
+			end
+		end
+		f:close()
+	else
+		error(msg)
+	end
+end
+
 --
 local config_file = select(1, ...)
 local begin_revision = tonumber(select(2, ...) or "")
-
-local config = require(config_file)
-assert(type(config) == "table", "Invalid config")
-local svn_url = config.svn_url
-local svn_relative_to_root_path = config.svn_relative_to_root_path
-local workdir = config.workdir
-local report_file = config.report_file
-local last_merged_revision_store = config.last_merged_revision_store
-local tbl_execlude_rule = config.execlude_rule
-local tbl_execlude_path = config.execlude_path
-local svn_path = string.format("%s%s", svn_url, svn_relative_to_root_path)
-local last_merged_revision = tonumber(read_file(last_merged_revision_store, false))
-assert(begin_revision or last_merged_revision, string.format("begin_revision(%s)|last_merged_revision(%s)|you must specify the revision", begin_revision, last_merged_revision))
-
-_ENV.SVN_CMD = config.svn_cmd
-
-local tbl_final_report = {} --[[
-	= {
-		[author] = {
-			[revition] = {
-					relative_to_root_path,
-					...
-			},
-			...
-		},
-		...
-	}
-]] 
-
-revert_dir(workdir)
-update_dir(workdir)
-local success, msg = get_log(svn_path, begin_revision or last_merged_revision)
-if success then
-	local tbl_log = msg
-	for _, v in ipairs(tbl_log) do
-		if begin_revision then
-			if v.revision < begin_revision then
-				goto continue
-			end
-		else
-			if v.revision <= last_merged_revision then
-				goto continue
-			end
-		end
-
-		--
-		print(string.format("merge revision = [%s], author = [%s]", v.revision, v.author))
-
-		if check_exclude(v, tbl_execlude_rule) then
-			goto continue
-		end
-
-		--
-		success, msg = merge(svn_relative_to_root_path, v.revision, workdir, tbl_execlude_path)
-		if not success then
-			error(msg)
-		else
-			local tbl_conflicts = msg
-			if #tbl_conflicts > 0 then
-				local f = io.open(report_file, "a") or io.output()
-
-				for _, conflicts_file in ipairs(tbl_conflicts) do
-					tbl_final_report[v.author] = tbl_final_report[v.author] or {}
-					tbl_final_report[v.author][v.revision] = tbl_final_report[v.author][v.revision] or {}
-
-					-- 获取相对于 svn 分支目录的相对路径
-					local relative_to_root_path = conflicts_file:match(string.format("^%s(.*)", workdir:gsub("%p","%%%0")))
-					tbl_final_report[v.author][v.revision][#tbl_final_report[v.author][v.revision] + 1] = relative_to_root_path
-
-					f:write(string.format("%s|%s|%s\n", v.author, v.revision, relative_to_root_path))
-				end
-
-				f:close()
-			end
-		end
-
-		::continue::
-		write_file(last_merged_revision_store, "w", "%s", v.revision)
-	end
-
-	-- 输出最终报告
-	local target = get_local_svn_relative_to_root_path(workdir, svn_url)
-	local f = io.output()
-
-	if next(tbl_final_report) then
-		f:write("------------------------------------------------------------------------\n")
-		f:write("Summary of conflicts:\n")
-	end
-
-	for author, v1 in pairs(tbl_final_report) do
-		f:write(string.format("%s\n", author))
-		for revision, tbl_relative_to_root_path in pairs(v1) do
-			f:write(string.format("\t merge %s %s to %s\n", svn_relative_to_root_path, revision, target))
-			for _, relative_to_root_path in ipairs(tbl_relative_to_root_path) do
-				f:write(string.format("\t\t%s\n", relative_to_root_path))
-			end
-		end
-	end
-	f:close()
-else
-	error(msg)
-end
+auto_merge(config_file, begin_revision)
