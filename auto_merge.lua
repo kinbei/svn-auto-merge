@@ -325,7 +325,52 @@ local function auto_merge(config_file, begin_revision)
 	end
 end
 
+local function print_conflicts(config_file)
+	local config = require(config_file)
+	_ENV.SVN_CMD = config.svn_cmd
+	assert(type(config) == "table", "Invalid config")
+	local report_file = config.report_file
+	local svn_url = config.svn_url
+	local svn_relative_to_root_path = config.svn_relative_to_root_path
+	local workdir = config.workdir
+	local target = get_local_svn_relative_to_root_path(workdir, svn_url)
+
+
+	local tbl_final_report = {}
+
+	local f = io.open(report_file, "r")
+	for line in f:lines() do
+		local author, revision, file = line:match("(.*)%|(.*)%|(.*)")
+		tbl_final_report[author] = tbl_final_report[author] or {}
+		tbl_final_report[author][revision] = tbl_final_report[author][revision] or {}
+		tbl_final_report[author][revision][#tbl_final_report[author][revision] + 1] = file
+ 	end
+
+ 	f = io.output()
+	if next(tbl_final_report) then
+		f:write("------------------------------------------------------------------------\n")
+		f:write("Summary of conflicts:\n")
+	end
+
+	for author, v1 in pairs(tbl_final_report) do
+		f:write(string.format("%s\n", author))
+		for revision, tbl_relative_to_root_path in pairs(v1) do
+			f:write(string.format("\t merge %s %s to %s\n", svn_relative_to_root_path, revision, target))
+			for _, relative_to_root_path in ipairs(tbl_relative_to_root_path) do
+				f:write(string.format("\t\t%s\n", relative_to_root_path))
+			end
+		end
+	end
+ 	f:close()
+end
+
 --
-local config_file = select(1, ...)
-local begin_revision = tonumber(select(2, ...) or "")
-auto_merge(config_file, begin_revision)
+local oper_type = select(1, ...)
+local config_file = select(2, ...)
+local begin_revision = tonumber(select(3, ...) or "")
+
+local tbl_oper_func = {}
+tbl_oper_func["print_conflicts"] = print_conflicts
+tbl_oper_func["auto_merge"] = auto_merge
+local func = assert(tbl_oper_func[oper_type], string.format("Invalid oper_type(%s)", oper_type))
+func(config_file, begin_revision)
