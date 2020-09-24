@@ -166,7 +166,7 @@ local function read_file(file_name, check_file_exist)
 	local f = io.open(file_name, "r")
 	if not f then
 		if check_file_exist then
-			error(string.format("write_file|file_name(%s)", file_name))
+			error(string.format("read_file|file_name(%s)", file_name))
 		else
 			return ""
 		end
@@ -179,50 +179,16 @@ local function read_file(file_name, check_file_exist)
 	return s
 end
 
---
-local config_file = select(1, ...)
-local config = require(config_file)
-local begin_revision = tonumber(select(2, ...) or "")
-if not config then
-	error(string.format("Failed to require %s", config_file))
-end
-
-local svn_url = config.svn_url
-local svn_relative_to_root_path = config.svn_relative_to_root_path
-local workdir = config.workdir
-local report_file = config.report_file
-local last_merged_revision_store = config.last_merged_revision_store
-local tbl_execlude_rule = config.execlude_rule
-local tbl_execlude_path = config.execlude_path
-local svn_path = string.format("%s%s", svn_url, svn_relative_to_root_path)
-local last_merged_revision = tonumber(read_file(last_merged_revision_store, false))
-_ENV.SVN_CMD = config.svn_cmd
-
-assert(begin_revision or last_merged_revision, string.format("begin_revision(%s)|last_merged_revision(%s)|you must specify the revision", begin_revision, last_merged_revision))
-
-local tbl_final_report = {} --[[
-	= {
-		[author] = {
-			[revition] = {
-					relative_to_root_path,
-					...
-			},
-			...
-		},
-		...
-	}
-]] 
-
-local function check_exclude(svn_log_info)
+local function check_exclude(svn_log_info, tbl_execlude_rule)
 	for _, execlude_rule in ipairs(tbl_execlude_rule) do
-		for k, _ in pairs(execlude_rule) do
-			-- 配置了其它项, 跳过不处理
+		for k, v in pairs(execlude_rule) do
+			-- 配置了非法字段, 跳过不处理
 			if not svn_log_info[k] then
 				goto continue_1
 			end
 
 			-- 排除规则不匹配
-			if svn_log_info[k] ~= execlude_rule[k] then
+			if svn_log_info[k] ~= v then
 				goto continue_2
 			end
 
@@ -255,6 +221,38 @@ local function get_local_svn_relative_to_root_path(local_path, svn_url)
 	return nil
 end
 
+--
+local config_file = select(1, ...)
+local begin_revision = tonumber(select(2, ...) or "")
+
+local config = require(config_file)
+assert(type(config) == "table", "Invalid config")
+local svn_url = config.svn_url
+local svn_relative_to_root_path = config.svn_relative_to_root_path
+local workdir = config.workdir
+local report_file = config.report_file
+local last_merged_revision_store = config.last_merged_revision_store
+local tbl_execlude_rule = config.execlude_rule
+local tbl_execlude_path = config.execlude_path
+local svn_path = string.format("%s%s", svn_url, svn_relative_to_root_path)
+local last_merged_revision = tonumber(read_file(last_merged_revision_store, false))
+assert(begin_revision or last_merged_revision, string.format("begin_revision(%s)|last_merged_revision(%s)|you must specify the revision", begin_revision, last_merged_revision))
+
+_ENV.SVN_CMD = config.svn_cmd
+
+local tbl_final_report = {} --[[
+	= {
+		[author] = {
+			[revition] = {
+					relative_to_root_path,
+					...
+			},
+			...
+		},
+		...
+	}
+]] 
+
 revert_dir(workdir)
 update_dir(workdir)
 local success, msg = get_log(svn_path, begin_revision or last_merged_revision)
@@ -274,7 +272,7 @@ if success then
 		--
 		print(string.format("merge revision = [%s], author = [%s]", v.revision, v.author))
 
-		if check_exclude(v) then
+		if check_exclude(v, tbl_execlude_rule) then
 			goto continue
 		end
 
