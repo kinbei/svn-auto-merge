@@ -105,6 +105,8 @@ local function merge(svn_relative_to_root_path, revision, workdir, tbl_execlude_
 	local tbl_normal = {} -- = {{file}, ...}
 
 	-- 从第二行开始获取变更的文件列表
+	local tbl_revert_path = {} -- 已经 revert 过的 svn 相对路径
+
 	for i = 2, #tbl_merge_response do
 		-- Summary of conflicts: 之后的信息不处理
 		if tbl_merge_response[i] == "Summary of conflicts:" then
@@ -122,8 +124,16 @@ local function merge(svn_relative_to_root_path, revision, workdir, tbl_execlude_
 			local relative_to_root_path = file:match(string.format("^%s(.*)", workdir:gsub("%p","%%%0")))
 
 			if relative_to_root_path:match(execlude_path) then
+				-- revert 过父目录, 子目录不再进行 revert
+				for _, revert_path in ipairs(tbl_revert_path) do
+					if file:match(string.format("^%s(.*)", revert_path:gsub("%p", "%%%0"))) then
+						goto continue
+					end
+				end
+
 				print(string.format("\tSkip|file(%s)", relative_to_root_path))
-				svn_command("revert %s@", file) -- 当文件路径中包含 @ 字符时, 需要在未尾也加上 @
+				svn_command("revert --depth infinity %s@", file) -- 当文件路径中包含 @ 字符时, 需要在未尾也加上 @
+				table.insert(tbl_revert_path, file)
 				goto continue
 			end
 		end
@@ -134,8 +144,8 @@ local function merge(svn_relative_to_root_path, revision, workdir, tbl_execlude_
 		-- 记录冲突文件并还原
 		if op == 'C' then
 			tbl_conflicts[#tbl_conflicts + 1] = file
-			svn_command("revert %s@", file) -- 当文件路径中包含 @ 字符时, 需要在未尾也加上 @
-			print(string.format("\trevert %s", file)) -- 打印回滚的路径
+			svn_command("revert --depth infinity %s@", file) -- 当文件路径中包含 @ 字符时, 需要在未尾也加上 @
+			print(string.format("\trevert --depth infinity %s", file)) -- 打印回滚的路径
 		else
 			tbl_normal[#tbl_normal + 1] = file
 		end
