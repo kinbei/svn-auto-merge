@@ -44,6 +44,15 @@ local function string_split(str, sep, func)
 	return tbl_fields
 end
 
+local function hash_table_sort(t, sort_func)
+	local array = {}
+	for k, v in pairs(t) do
+		table.insert(array, {key = k, value = v})
+	end
+	table.sort(array, sort_func)
+	return array
+end
+
 local function get_log(svn_path, begin_revision)
 	local xml_parser = xml2lua.parser(xmlhandler)
 	xml_parser:parse( table.concat(svn_command("log %s -r%s:HEAD --xml", svn_path, begin_revision), "\n") )
@@ -364,7 +373,10 @@ local function print_conflicts(config_file)
 
 	for author, v1 in pairs(tbl_final_report) do
 		f:write(string.format("%s\n", author))
-		for revision, tbl_relative_to_root_path in pairs(v1) do
+		for _, v2 in pairs(hash_table_sort(v1, function(a, b) return a.key < b.key end)) do -- .key 即为 revision
+			local revision = v2.key
+			local tbl_relative_to_root_path = v2.value
+
 			f:write(string.format("\t merge %s %s to %s\n", svn_relative_to_root_path, revision, target))
 			for _, relative_to_root_path in ipairs(tbl_relative_to_root_path) do
 				f:write(string.format("\t\t%s\n", relative_to_root_path))
