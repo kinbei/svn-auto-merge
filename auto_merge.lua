@@ -72,7 +72,8 @@ end
 
 --
 local function revert(relative_to_root_path)
-	svn_command("resolved %s@", relative_to_root_path)  -- 当文件路径中包含 @ 字符时, 需要在未尾也加上 @
+	svn_command("revert --depth infinity %s", relative_to_root_path)
+	svn_command("resolve --accept working %s", relative_to_root_path)
 end
 
 --
