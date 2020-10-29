@@ -71,8 +71,8 @@ local function get_log(svn_path, begin_revision)
 end
 
 --
-local function revert_dir(workdir)
-	svn_command("revert --depth infinity %s", workdir)
+local function revert(relative_to_root_path)
+	svn_command("resolved %s@", relative_to_root_path)  -- 当文件路径中包含 @ 字符时, 需要在未尾也加上 @
 end
 
 --
@@ -141,7 +141,7 @@ local function merge(svn_relative_to_root_path, revision, workdir, tbl_execlude_
 				end
 
 				print(string.format("\tSkip|file(%s)", relative_to_root_path))
-				svn_command("revert --depth infinity %s@", file) -- 当文件路径中包含 @ 字符时, 需要在未尾也加上 @
+				revert(file) -- 当文件路径中包含 @ 字符时, 需要在未尾也加上 @
 				table.insert(tbl_revert_path, file)
 				goto continue
 			end
@@ -153,8 +153,8 @@ local function merge(svn_relative_to_root_path, revision, workdir, tbl_execlude_
 		-- 记录冲突文件并还原
 		if op == 'C' then
 			tbl_conflicts[#tbl_conflicts + 1] = file
-			svn_command("revert --depth infinity %s@", file) -- 当文件路径中包含 @ 字符时, 需要在未尾也加上 @
-			print(string.format("\trevert --depth infinity %s", file)) -- 打印回滚的路径
+			revert(file)
+			print(string.format("\trevert %s", file)) -- 打印回滚的路径
 		else
 			tbl_normal[#tbl_normal + 1] = file
 		end
@@ -269,7 +269,7 @@ local function auto_merge(config_file, begin_revision)
 		}
 	]] 
 
-	revert_dir(workdir)
+	revert(workdir)
 	update_dir(workdir)
 	local success, msg = get_log(svn_path, begin_revision or last_merged_revision)
 	if success then
