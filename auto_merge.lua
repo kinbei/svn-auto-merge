@@ -53,9 +53,10 @@ local function hash_table_sort(t, sort_func)
 	return array
 end
 
-local function get_log(svn_path, begin_revision)
+local function get_log(svn_path, begin_revision, end_revision)
 	local xml_parser = xml2lua.parser(xmlhandler)
-	xml_parser:parse( table.concat(svn_command("log %s -r%s:HEAD --xml", svn_path, begin_revision), "\n") )
+	end_revision = end_revision or "HEAD"
+	xml_parser:parse( table.concat(svn_command("log %s -r%s:%s --xml", svn_path, begin_revision, end_revision), "\n") )
 	
 	local tbl_log = xmlhandler.root.log.logentry
 	if #tbl_log <= 0 then
@@ -241,7 +242,7 @@ local function get_local_svn_relative_to_root_path(local_path, svn_url)
 	return nil
 end
 
-local function auto_merge(config_file, begin_revision)
+local function auto_merge(config_file, begin_revision, end_revision)
 	local config = require(config_file)
 	assert(type(config) == "table", "Invalid config")
 	local svn_url = config.svn_url
@@ -272,7 +273,7 @@ local function auto_merge(config_file, begin_revision)
 
 	revert(workdir)
 	update_dir(workdir)
-	local success, msg = get_log(svn_path, begin_revision or last_merged_revision)
+	local success, msg = get_log(svn_path, begin_revision or last_merged_revision, end_revision)
 	if success then
 		local tbl_log = msg
 		for _, v in ipairs(tbl_log) do
@@ -391,9 +392,10 @@ end
 local oper_type = select(1, ...)
 local config_file = select(2, ...)
 local begin_revision = tonumber(select(3, ...) or "")
+local end_revision = tonumber(select(4, ...) or "")
 
 local tbl_oper_func = {}
 tbl_oper_func["print_conflicts"] = print_conflicts
 tbl_oper_func["auto_merge"] = auto_merge
 local func = assert(tbl_oper_func[oper_type], string.format("Invalid oper_type(%s)", oper_type))
-func(config_file, begin_revision)
+func(config_file, begin_revision, end_revision)
