@@ -35,6 +35,6 @@ local config = {
 
 (3) 第一次合并时, 必须指定 A 分支的版本号 ${REVISION} (将 A 分支 ${REVISION} 至 HEAD 合并至 B 分支)
 ```
-lua -e"package.path = package.path .. \";svn-auto-merge/?.lua;xml2lua/?.lua\"" ./auto_merge.lua "auto_merge" config.lua ${REVISION}
+lua -e"package.path = package.path .. \";xml2lua/?.lua\"" ./auto_merge.lua "auto_merge" config.lua ${REVISION}
 ```
 
