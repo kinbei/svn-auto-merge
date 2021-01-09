@@ -356,10 +356,14 @@ local function print_conflicts(config_file)
 	local workdir = config.workdir
 	local target = get_local_svn_relative_to_root_path(workdir, svn_url)
 
-
 	local tbl_final_report = {}
 
 	local f = io.open(report_file, "r")
+        if not f then
+                print(string.format("can not found report_file(%s)", report_file))
+                return
+        end
+
 	for line in f:lines() do
 		local author, revision, file = line:match("(.*)%|(.*)%|(.*)")
 		tbl_final_report[author] = tbl_final_report[author] or {}
