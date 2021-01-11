@@ -364,12 +364,22 @@ local function print_conflicts(config_file)
                 return
         end
 
-	for line in f:lines() do
-		local author, revision, file = line:match("(.*)%|(.*)%|(.*)")
-		tbl_final_report[author] = tbl_final_report[author] or {}
-		tbl_final_report[author][revision] = tbl_final_report[author][revision] or {}
-		tbl_final_report[author][revision][#tbl_final_report[author][revision] + 1] = file
- 	end
+        for line in f:lines() do
+                if line == "" then
+                        goto continue
+                end
+
+                local author, revision, file = line:match("(.*)%|(.*)%|(.*)")
+                if not author then
+                        error(string.format("line(%s)", line))
+                end
+
+                tbl_final_report[author] = tbl_final_report[author] or {}
+                tbl_final_report[author][revision] = tbl_final_report[author][revision] or {}
+                tbl_final_report[author][revision][#tbl_final_report[author][revision] + 1] = file
+
+                ::continue::
+        end
 
  	f = io.output()
 	if next(tbl_final_report) then
