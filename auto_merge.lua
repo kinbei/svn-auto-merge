@@ -1,6 +1,7 @@
 package.path = "./xml2lua/?.lua;" .. package.path
 local xml2lua = require("xml2lua")
 local xmlhandler = require("xmlhandler.tree")
+local string_gsub = string.gsub
 
 local function execute_command(fmt, ...)
 	local handle = io.popen(string.format(fmt, ...), "r")
@@ -88,12 +89,21 @@ tbl_merged_item_op['D'] = true
 tbl_merged_item_op['C'] = true
 tbl_merged_item_op['U'] = true
 
+-- 格式化参数
+local function format_vars(fmt, tbl_vars)
+	if tbl_vars then
+		return (string_gsub(fmt, "%${([%w_]+)}", tbl_vars))
+	else
+		return fmt
+	end
+end
+
 --
-local function merge(svn_relative_to_root_path, revision, workdir, tbl_execlude_path)
+local function merge(commit_log_fmt, svn_relative_to_root_path, svn_log, workdir, tbl_execlude_path)
 	-- 每次 merge 前都执行 update, 防止出现 svn: E195020: Cannot merge into mixed-revision working copy [xxx:xxx]; try updating first
 	update_dir(workdir)
 
-	local tbl_merge_response = svn_command("merge ^%s -c%s %s --accept 'postpone'", svn_relative_to_root_path, revision, workdir)
+	local tbl_merge_response = svn_command("merge ^%s -c%s %s --accept 'postpone'", svn_relative_to_root_path, svn_log.revision, workdir)
 	if #tbl_merge_response <= 0 then
 		-- svn merge 没有任何返回, 通常是已经合并过代码
 		return true, {}
@@ -106,8 +116,8 @@ local function merge(svn_relative_to_root_path, revision, workdir, tbl_execlude_
 	end
 
 	-- 返回信息的版本不一致
-	if merge_revision ~= revision then
-		return false, string.format("error|merge|merge_revision not match|%s|%s", merge_revision, revision)
+	if merge_revision ~= svn_log.revision then
+		return false, string.format("error|merge|merge_revision not match|%s|%s", merge_revision, svn_log.revision)
 	end
 
 	-- 冲突文件列表
@@ -165,7 +175,8 @@ local function merge(svn_relative_to_root_path, revision, workdir, tbl_execlude_
 	end
 
 	if #tbl_normal > 0 then
-		svn_command("commit -m\"merge from %s %s\" %s", svn_relative_to_root_path, revision, workdir)
+		local commit_log = format_vars(commit_log_fmt, {from_svn_relative_to_root_path = svn_relative_to_root_path, from_revision = svn_log.revision, from_commit_log = svn_log.msg})
+		svn_command([[commit -m"%s" %s]], commit_log, workdir)
 	end
 	return true, tbl_conflicts
 end
@@ -254,6 +265,7 @@ local function auto_merge(config_file, begin_revision, end_revision)
 	local tbl_execlude_path = config.execlude_path
 	local svn_path = string.format("%s%s", svn_url, svn_relative_to_root_path)
 	local last_merged_revision = tonumber(read_file(last_merged_revision_store, false))
+	local commit_log_fmt = config.commit_log_fmt or [[merge from ${from_svn_relative_to_root_path} ${from_revision}]]
 	assert(begin_revision or last_merged_revision, string.format("begin_revision(%s)|last_merged_revision(%s)|you must specify the revision", begin_revision, last_merged_revision))
 
 	_ENV.SVN_CMD = config.svn_cmd
@@ -275,27 +287,27 @@ local function auto_merge(config_file, begin_revision, end_revision)
 	update_dir(workdir)
 	local success, msg = get_log(svn_path, begin_revision or last_merged_revision, end_revision)
 	if success then
-		local tbl_log = msg
-		for _, v in ipairs(tbl_log) do
+		local tbl_svn_log = msg
+		for _, svn_log in ipairs(tbl_svn_log) do
 			if begin_revision then
-				if v.revision < begin_revision then
+				if svn_log.revision < begin_revision then
 					goto continue
 				end
 			else
-				if v.revision <= last_merged_revision then
+				if svn_log.revision <= last_merged_revision then
 					goto continue
 				end
 			end
 
 			--
-			print(string.format("merge revision = [%s], author = [%s]", v.revision, v.author))
+			print(string.format("merge revision = [%s], author = [%s]", svn_log.revision, svn_log.author))
 
-			if check_exclude(v, tbl_execlude_rule) then
+			if check_exclude(svn_log, tbl_execlude_rule) then
 				goto continue
 			end
 
 			--
-			success, msg = merge(svn_relative_to_root_path, v.revision, workdir, tbl_execlude_path)
+			success, msg = merge(commit_log_fmt, svn_relative_to_root_path, svn_log, workdir, tbl_execlude_path)
 			if not success then
 				error(msg)
 			else
@@ -304,14 +316,14 @@ local function auto_merge(config_file, begin_revision, end_revision)
 					local f = io.open(report_file, "a") or io.output()
 
 					for _, conflicts_file in ipairs(tbl_conflicts) do
-						tbl_final_report[v.author] = tbl_final_report[v.author] or {}
-						tbl_final_report[v.author][v.revision] = tbl_final_report[v.author][v.revision] or {}
+						tbl_final_report[svn_log.author] = tbl_final_report[svn_log.author] or {}
+						tbl_final_report[svn_log.author][svn_log.revision] = tbl_final_report[svn_log.author][svn_log.revision] or {}
 
 						-- 获取相对于 svn 分支目录的相对路径
 						local relative_to_root_path = conflicts_file:match(string.format("^%s(.*)", workdir:gsub("%p","%%%0")))
-						tbl_final_report[v.author][v.revision][#tbl_final_report[v.author][v.revision] + 1] = relative_to_root_path
+						tbl_final_report[svn_log.author][svn_log.revision][#tbl_final_report[svn_log.author][svn_log.revision] + 1] = relative_to_root_path
 
-						f:write(string.format("%s|%s|%s\n", v.author, v.revision, relative_to_root_path))
+						f:write(string.format("%s|%s|%s\n", svn_log.author, svn_log.revision, relative_to_root_path))
 					end
 
 					f:close()
@@ -319,7 +331,7 @@ local function auto_merge(config_file, begin_revision, end_revision)
 			end
 
 			::continue::
-			write_file(last_merged_revision_store, "w", "%s", v.revision)
+			write_file(last_merged_revision_store, "w", "%s", svn_log.revision)
 		end
 
 		-- 输出最终报告
