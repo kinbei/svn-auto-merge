@@ -62,9 +62,18 @@ local function get_log(svn_path, begin_revision, end_revision)
 	end_revision = end_revision or "HEAD"
 	xml_parser:parse( table.concat(svn_command("log %s -r%s:%s --xml", svn_path, begin_revision, end_revision), "\n") )
 	
-	local tbl_log = xmlhandler.root.log.logentry
-	if #tbl_log <= 0 then
-		tbl_log = {tbl_log}
+	local tbl_log
+	-- 当 begin_revision - end_revision 两个版本之间没有任务变更时, xmlhandler.root.log.logentry 为 nil
+	if xmlhandler.root.log.logentry == nil then
+		tbl_log = {}
+	else
+		-- 当 begin_revision - end_revision 两个版本之间只有一条变更记录时, xmlhandler.root.log.logentry 不会以序列的形式返回
+		-- 详见 https://github.com/manoelcampos/xml2lua/blob/master/example1.lua#L25-L31
+		if #tbl_log <= 0 then
+			tbl_log = {tbl_log}
+		else
+			tbl_log = xmlhandler.root.log.logentry
+		end		
 	end
 
 	local t = {}
