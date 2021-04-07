@@ -1,6 +1,6 @@
 LUA_MYCFLAGS := ""
 ROOT_DIR := $(shell pwd)
-LUA_VER := "5.4.0"
+LUA_VER := "5.4.3"
 
 lua : 
 	wget https://www.lua.org/ftp/lua-$(LUA_VER).tar.gz && \
