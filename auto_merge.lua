@@ -67,6 +67,7 @@ local function get_log(svn_path, begin_revision, end_revision)
 	if xmlhandler.root.log.logentry == nil then
 		tbl_log = {}
 	else
+		tbl_log = xmlhandler.root.log.logentry
 		-- 当 begin_revision - end_revision 两个版本之间只有一条变更记录时, xmlhandler.root.log.logentry 不会以序列的形式返回
 		-- 详见 https://github.com/manoelcampos/xml2lua/blob/master/example1.lua#L25-L31
 		if #tbl_log <= 0 then
