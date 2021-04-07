@@ -30,6 +30,7 @@ local config = {
 		execlude_path = {},
 		last_merged_revision_store = "/path_to_last_merged_revision", -- 程序用于保存最后已经合并过的版本号
 		commit_log_fmt = [[merge from ${from_svn_relative_to_root_path} ${from_revision}|${from_commit_log}]], -- 合并代码后提交的 svn log 格式
+		abort = false, -- 设置为 true 时表示出现冲突则停止继续合并
 }
 ```
 将以上内容保存为 `config.lua`   

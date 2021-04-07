@@ -278,6 +278,7 @@ local function auto_merge(config_file, begin_revision, end_revision)
 	local svn_path = string_format("%s%s", svn_url, svn_relative_to_root_path)
 	local last_merged_revision = tonumber(read_file(last_merged_revision_store, false))
 	local commit_log_fmt = config.commit_log_fmt or [[merge from ${from_svn_relative_to_root_path} ${from_revision}]]
+	local abort = config.abort
 	assert(begin_revision or last_merged_revision, string_format("begin_revision(%s)|last_merged_revision(%s)|you must specify the revision", begin_revision, last_merged_revision))
 
 	_ENV.SVN_CMD = config.svn_cmd
@@ -339,6 +340,11 @@ local function auto_merge(config_file, begin_revision, end_revision)
 					end
 
 					f:close()
+
+					-- 当合并出现冲突时, 停止合并
+					if abort == true then
+						break
+					end
 				end
 			end
 
