@@ -6,6 +6,28 @@ local string_format = string.format
 local table_insert = table.insert
 local table_sort = table.sort
 
+local function execute_command_without_format(cmd)
+	local handle = io.popen(cmd, "r")
+	local t = {}
+
+	for line in handle:lines() do
+		t[#t + 1] = line
+ 	end
+
+	local tbl_rc = {handle:close()}
+	if tbl_rc[1] ~= true then
+		print("Error|execute_command|[" .. cmd .. "]")
+		for _, v in ipairs(t) do
+			print(string_format("%s", v))
+		end
+		for k, v in pairs(tbl_rc) do
+			print(string_format("k(%s) v(%s)", k, v))
+		end
+		assert(false)
+	end
+	return t, tbl_rc
+end
+
 local function execute_command(fmt, ...)
 	local handle = io.popen(string_format(fmt, ...), "r")
 	local t = {}
@@ -189,7 +211,7 @@ local function merge(commit_log_fmt, svn_relative_to_root_path, svn_log, workdir
 
 	if #tbl_normal > 0 then
 		local commit_log = format_vars(commit_log_fmt, {from_svn_relative_to_root_path = svn_relative_to_root_path, from_revision = svn_log.revision, from_commit_log = svn_log.msg})
-		svn_command([[commit -m"%s" %s]], commit_log, workdir)
+		execute_command_without_format(_ENV.SVN_CMD .. " " .. string_format([[commit -m"%s" %s]], commit_log, workdir))
 	end
 	return true, tbl_conflicts
 end
