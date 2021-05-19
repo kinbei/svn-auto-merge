@@ -211,7 +211,7 @@ local function merge(commit_log_fmt, svn_relative_to_root_path, svn_log, workdir
 
 	if #tbl_normal > 0 then
 		local commit_log = format_vars(commit_log_fmt, {from_svn_relative_to_root_path = svn_relative_to_root_path, from_revision = svn_log.revision, from_commit_log = svn_log.msg})
-		execute_command_without_format(_ENV.SVN_CMD .. " " .. string_format([[commit -m"%s" %s]], commit_log, workdir))
+		execute_command_without_format(_ENV.SVN_CMD .. " " .. string_format([[commit -m"%s" %s]], commit_log:gsub("\"","\\\""), workdir))
 	end
 	return true, tbl_conflicts
 end
