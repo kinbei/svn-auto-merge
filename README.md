@@ -39,6 +39,6 @@ local config = {
 ```
 lua -e"package.path = package.path .. \";xml2lua/?.lua\"" ./auto_merge.lua "auto_merge" config.lua ${BEGIN_REVISION} ${END_REVISION}
 ```
-注: `END_REVISION`可以不指定, 配置是 HEAD(最新 revision)    
+注: `END_REVISION`可以不指定, 默认是 HEAD(最新 revision)    
 
 
