@@ -35,8 +35,10 @@ local config = {
 ```
 将以上内容保存为 `config.lua`   
 
-(3) 第一次合并时, 必须指定 A 分支的版本号 ${REVISION} (将 A 分支 ${REVISION} 至 HEAD 合并至 B 分支)
+(3) 第一次合并时, 必须指定 A 分支的版本号 ${REVISION} (将 A 分支 ${BEGIN_REVISION} 至 ${END_REVISION} 合并至 B 分支)
 ```
-lua -e"package.path = package.path .. \";xml2lua/?.lua\"" ./auto_merge.lua "auto_merge" config.lua ${REVISION}
+lua -e"package.path = package.path .. \";xml2lua/?.lua\"" ./auto_merge.lua "auto_merge" config.lua ${BEGIN_REVISION} ${END_REVISION}
 ```
+注: `END_REVISION`可以不指定, 配置是 HEAD(最新 revision)    
+
 
